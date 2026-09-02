@@ -1,0 +1,8 @@
+{
+  "name": "skill-kit",
+  "description": "Skill 候補から Skill を作成し、社内マーケットプレイスへ登録するための手順",
+  "version": "0.1.0",
+  "author": {
+    "name": "asiball"
+  }
+}

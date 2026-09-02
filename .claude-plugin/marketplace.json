@@ -1,0 +1,21 @@
+{
+  "name": "claude-skills",
+  "owner": {
+    "name": "asiball"
+  },
+  "plugins": [
+    {
+      "name": "worklog",
+      "source": "./plugins/worklog",
+      "description": "1日の Claude Code セッションを振り返り、再利用できる知識・自動化・Skill 候補を最適な置き場所へ分類する",
+      "version": "0.1.0"
+    },
+    {
+      "name": "skill-kit",
+      "source": "./plugins/skill-kit",
+      "description": "Skill 候補から Skill を作成し、社内マーケットプレイスへ登録するための手順",
+      "version": "0.1.0"
+    }
+  ],
+  "description": "社内向け Claude Code プラグイン集"
+}

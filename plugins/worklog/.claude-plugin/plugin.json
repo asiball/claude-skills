@@ -1,0 +1,8 @@
+{
+  "name": "worklog",
+  "description": "1日の Claude Code セッションを振り返り、再利用できる知識・自動化・Skill 候補を最適な置き場所へ分類する",
+  "version": "0.1.0",
+  "author": {
+    "name": "asiball"
+  }
+}
