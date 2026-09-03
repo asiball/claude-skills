@@ -1,5 +1,5 @@
 ---
-name: daily-review
+name: end
 description: 1日の Claude Code セッションを横断して振り返り、Daily Review を書き、再利用候補を docs / README / AGENTS.md / script / Skill に分類する。業務終了時に手動で実行する。
 argument-hint: "[YYYY-MM-DD]"
 disable-model-invocation: true
@@ -63,7 +63,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py digest <session_id>
 
 ### 4. 再利用候補を分類する
 
-発見したものを `references/classification.md` の基準で振り分ける。
+発見したものを `${CLAUDE_PLUGIN_ROOT}/references/classification.md` の基準で振り分ける。
 判断に迷うものは「何もしない」か「候補として保留」に倒す。
 
 ### 5. Daily Review を書く
@@ -130,7 +130,7 @@ Daily Review に書いた反映候補のうち、今すぐ価値があるもの�
 
 - docs / README / CONTRIBUTING / AGENTS.md / CLAUDE.md: 既存の正本と重複させない。正本があれば参照を書く
 - script: 決定的な処理のみ。Skill にしない
-- Skill: ここでは作らない。`candidates/skills.md` に候補として残し、作成する場合は `/skill-kit:create <候補名>` を案内する
+- Skill: ここでは作らない。`candidates/skills.md` に候補として残し、作成する場合は `/worklog:skill <候補名>` を案内する
 
 ### 8. 結果を報告する
 

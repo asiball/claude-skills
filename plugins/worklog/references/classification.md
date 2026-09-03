@@ -68,4 +68,4 @@ README / CONTRIBUTING / docs と重複させず、可能な限り正本への参
 - プロジェクトまたは組織固有の判断方法である
 - 再利用することで明確な価値がある
 
-Skill 候補は記録に留める。作成判断・置き場所・社内共有の基準は `skill-kit` プラグインの `references/skill-lifecycle.md` にあり、`/skill-kit:create` がそれに従う。
+Skill 候補は記録に留める。作成判断・置き場所・社内共有の基準は `${CLAUDE_PLUGIN_ROOT}/references/skill-lifecycle.md` にあり、`/worklog:skill` がそれに従う。

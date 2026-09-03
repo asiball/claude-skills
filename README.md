@@ -5,10 +5,9 @@
 
 ## プラグイン一覧
 
-| プラグイン | 提供するスキル | 概要 |
+| プラグイン | スキル | 概要 |
 |---|---|---|
-| [worklog](plugins/worklog/README.md) | `/worklog:daily-review` | 1日の作業を振り返り、再利用候補を docs / README / AGENTS.md / script / Skill に分類する |
-| [skill-kit](plugins/skill-kit/README.md) | `/skill-kit:create` `/skill-kit:publish` | Skill 候補から Skill を作成し、価値が確認できたものをこのマーケットプレイスへ登録する |
+| [worklog](plugins/worklog/README.md) | `/worklog:end` `/worklog:skill` `/worklog:publish` | 1日の作業を振り返り、再利用候補を分類し、価値が確認できた Skill を社内へ登録する |
 
 ## 導入
 
@@ -48,17 +47,31 @@ git clone http://<gitbucket-host>/git/<owner>/claude-skills.git ~/claude-skills
 /plugin install worklog@claude-skills
 ```
 
-インストール後に `/help` の Custom commands タブにスキルが表示されます。
-更新は `/plugin` の管理画面、または `/plugin marketplace update claude-skills` で取り込みます。
+インストール後、`/worklog:` まで入力すると補完でスキルが並びます。
+
+### 3. 更新を取り込む
+
+```
+/plugin marketplace update claude-skills
+```
+
 更新はプラグインの `version` が上がったときにだけ配信されます。
+
+| 変更の種類 | 利用者側に必要なこと |
+|---|---|
+| プラグイン内のスキル追加・改名・削除 | `version` が上がっていれば update で反映。再インストール不要 |
+| プラグインの改名 | `marketplace.json` の `renames` で自動移行 |
+| プラグインの削除 | 手元には残るので `/plugin uninstall <name>@claude-skills` が必要 |
 
 ## 用語
 
 | 用語 | 実体 | 役割 |
 |---|---|---|
-| スキル | `skills/<name>/SKILL.md` | Claude への手順書。`/name` で実行する単位 |
+| スキル | `skills/<name>/SKILL.md` | Claude への手順書。`/plugin:name` で実行する単位 |
 | プラグイン | `plugins/<name>/` | スキルをまとめた配布単位。スキル名の前に `plugin:` が付く |
 | マーケットプレイス | このリポジトリ | プラグインのカタログ。`.claude-plugin/marketplace.json` が一覧 |
+
+マーケットプレイス名（`marketplace.json` の `name`）は `/plugin install worklog@<name>` の `@` 以降に出ます。社内へコピーする際に社名・部署名入りに変えて構いません（誰かが install する前なら影響なし）。
 
 ## プラグインを追加・更新する
 
@@ -69,7 +82,7 @@ git clone http://<gitbucket-host>/git/<owner>/claude-skills.git ~/claude-skills
    claude plugin validate ./plugins/<name>
    claude --plugin-dir ./plugins/<name>
    ```
-   （既存の Skill を登録する場合は 1〜3 を `/skill-kit:publish` が行います）
+   （既存の Skill を登録する場合は 1〜3 を `/worklog:publish` が行います）
 4. GitBucket で Pull Request を作成し、レビューを受ける
 5. マージ後、利用者は `/plugin marketplace update claude-skills` で取り込む
 
@@ -80,10 +93,10 @@ git clone http://<gitbucket-host>/git/<owner>/claude-skills.git ~/claude-skills
 Skill はいきなり社内共有せず、次の順で範囲を広げます。
 
 ```
-候補（~/.agent-worklog/candidates/skills.md）   ← /worklog:daily-review が記録
-  → 個人（~/.claude/skills/<name>/）             ← /skill-kit:create
-  → リポジトリ（<repo>/.claude/skills/<name>/）   ← /skill-kit:create
-  → 社内（このリポジトリへ PR）                    ← /skill-kit:publish がコミットまで行い、push と PR は人が行う
+候補（~/.agent-worklog/candidates/skills.md）   ← /worklog:end が記録
+  → 個人（~/.claude/skills/<name>/）             ← /worklog:skill
+  → リポジトリ（<repo>/.claude/skills/<name>/）   ← /worklog:skill
+  → 社内（このリポジトリへ PR）                    ← /worklog:publish がコミットまで行い、push と PR は人が行う
 ```
 
 社内共有する Skill には、owner・version・scope・when not to use・maintenance policy・最終確認日を README または SKILL.md に明記してください。

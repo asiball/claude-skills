@@ -1,6 +1,7 @@
 # worklog
 
 1日の Claude Code セッションを横断して振り返り、再利用できる知識・自動化・Skill 候補を発見して、最も適切な置き場所へ分類するプラグインです。
+価値が確認できた Skill は、同じプラグインの手順で社内マーケットプレイスへ登録します。
 
 目的は「Skill を作ること」ではありません。
 振り返りの結果、Skill が最適な保存形式だった場合にだけ Skill を作ります。
@@ -8,17 +9,34 @@
 
 ## 提供するスキル
 
+業務の流れに沿って `end → skill → publish` の順に使います。すべて手動起動です（Claude が自動で起動することはありません）。
+
 | スキル | 起動 | 説明 |
 |---|---|---|
-| `daily-review` | `/worklog:daily-review [YYYY-MM-DD]` | 対象日（省略時は今日）のセッションを集約して Daily Review を書き、再利用候補を分類する |
+| `end` | `/worklog:end [YYYY-MM-DD]` | 業務終了時に実行。対象日（省略時は今日）のセッションを集約して Daily Review を書き、再利用候補を分類・記録する |
+| `skill` | `/worklog:skill [候補名 または 説明]` | 候補を作成判断チェックリストにかけ、個人（`~/.claude/skills/`）またはリポジトリ（`.claude/skills/`）に雛形から SKILL.md を書く |
+| `publish` | `/worklog:publish <skill のディレクトリ> [マーケットプレイス clone のパス]` | 共有基準を確認し、マーケットプレイスの `plugins/` に複製、manifest 更新、validate、ブランチにコミットする。push と Pull Request は人が行う |
 
-Claude が自動で起動することはありません（`disable-model-invocation: true`）。業務終了時に手動で実行してください。
+## Skill のライフサイクル
+
+```
+候補（~/.agent-worklog/candidates/skills.md）   ← /worklog:end が記録
+  → 個人                                        ← /worklog:skill
+  → リポジトリ                                   ← /worklog:skill
+  → 社内                                        ← /worklog:publish → push と PR は人が行う
+```
+
+判断基準:
+
+- `references/classification.md`: 見つけたものを docs / README / AGENTS.md / script / Skill 候補 / 何もしない のどこに置くか
+- `references/skill-lifecycle.md`: Skill を作るか、社内共有するか、外部 Skill をどう扱うか
+- `templates/SKILL-template.md`: Skill の雛形
 
 ## 前提
 
-- `python3`（3.9 以上）が PATH にあること
-- `git` が PATH にあること
+- `python3`（3.9 以上）と `git` が PATH にあること
 - Claude Code の transcript が既定の場所（`~/.claude/projects/`、または `CLAUDE_CONFIG_DIR` 配下）にあること
+- `publish` のみ: マーケットプレイスリポジトリの clone が手元にあり、作業ツリーがきれいであること
 
 ## 読む情報
 
@@ -29,23 +47,17 @@ Claude が自動で起動することはありません（`disable-model-invocat
 
 ## 書く場所
 
-すべて `~/.agent-worklog/` 配下です。リポジトリには自動で書き込みません。
+| スキル | 書く場所 |
+|---|---|
+| `end` | `~/.agent-worklog/daily/YYYY-MM-DD.md`、`~/.agent-worklog/candidates/{knowledge,automation,skills}.md`。docs / AGENTS.md / script への反映は提案として提示し、承認された場合にのみ書く |
+| `skill` | 指定した skills ディレクトリと、`candidates/skills.md` の状態欄 |
+| `publish` | マーケットプレイス clone 内の新しいブランチ。push はしない |
 
-```
-~/.agent-worklog/
-  daily/YYYY-MM-DD.md        # その日の Daily Review
-  candidates/knowledge.md    # docs / README / AGENTS.md への反映候補
-  candidates/automation.md   # script 化の候補
-  candidates/skills.md       # Skill 候補（状態: candidate）
-```
-
-docs / AGENTS.md / script への反映は**提案として提示し、承認された場合にのみ**その場で書きます。
-Skill は作成しません。候補として `candidates/skills.md` に残し、作成と社内共有は `skill-kit` プラグイン（`/skill-kit:create`, `/skill-kit:publish`）が担当します。
-Pull Request は作成しません（GitBucket 環境では `gh` / `glab` 相当のツールがないため、コミットと PR は人が行います）。
+リポジトリへの自動書き込み、Pull Request の作成、外部通信はしません（GitBucket 環境では `gh` / `glab` 相当のツールがないため、コミットと PR は人が行います）。
 
 ## スクリプト
 
-`scripts/sessions.py` は transcript を決定的に処理するための補助スクリプトです。スキルから呼ばれますが、単体でも使えます。
+`scripts/sessions.py` は transcript を決定的に処理するための補助スクリプトです。`end` から呼ばれますが、単体でも使えます。
 
 ```
 python3 scripts/sessions.py list [--date YYYY-MM-DD] [--json]
@@ -54,8 +66,6 @@ python3 scripts/sessions.py digest <session_id> [--max-chars N] [--per-message N
 
 - `list`: 対象日に記録のあるセッションを、リポジトリ（worktree なら元リポジトリも）ごとに一覧する
 - `digest`: 1 セッションを「ユーザー発言 / Claude の応答 / 使用ツール / エラー」の可読テキストに変換する
-
-外部通信はしません。
 
 ## References
 

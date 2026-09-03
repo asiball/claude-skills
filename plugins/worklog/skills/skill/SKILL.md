@@ -1,5 +1,5 @@
 ---
-name: create
+name: skill
 description: Skill 候補から Skill を作成する。作成判断チェックリストを通し、個人またはリポジトリの skills ディレクトリに雛形から SKILL.md を書く。
 argument-hint: "[候補名 または 説明]"
 disable-model-invocation: true
@@ -37,7 +37,7 @@ script / docs / AGENTS.md で足りると判断したら、その代替案を示
 | 個人 | `~/.claude/skills/<name>/SKILL.md` | まず自分で使って価値を確かめる段階 |
 | リポジトリ | `<repo>/.claude/skills/<name>/SKILL.md` | そのリポジトリの作業者全員に必要 |
 
-社内共有はここでは行わない。運用して価値が確認できたら `/skill-kit:publish` を使う。
+社内共有はここでは行わない。運用して価値が確認できたら `/worklog:publish` を使う。
 
 ### 4. 設計する
 
@@ -67,4 +67,4 @@ skills ディレクトリはセッション中に監視されているので、�
 
 ### 8. 報告する
 
-作成したパス、起動名、次にやること（数回使って価値を確かめる → 必要なら `/skill-kit:publish`）を短く示す。
+作成したパス、起動名、次にやること（数回使って価値を確かめる → 必要なら `/worklog:publish`）を短く示す。
