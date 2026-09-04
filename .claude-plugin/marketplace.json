@@ -11,5 +11,8 @@
       "version": "0.1.1"
     }
   ],
-  "description": "社内向け Claude Code プラグイン集"
+  "description": "社内向け Claude Code プラグイン集",
+  "renames": {
+    "skill-kit": "worklog"
+  }
 }

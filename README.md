@@ -60,8 +60,7 @@ git clone http://<gitbucket-host>/git/<owner>/claude-skills.git ~/claude-skills
 | 変更の種類 | 利用者側に必要なこと |
 |---|---|
 | プラグイン内のスキル追加・改名・削除 | `version` が上がっていれば update で反映。再インストール不要 |
-| プラグインの改名 | `marketplace.json` の `renames` で自動移行 |
-| プラグインの削除 | 手元には残るので `/plugin uninstall <name>@claude-skills` が必要 |
+| プラグインの改名・統合・削除 | `marketplace.json` の `renames` に旧名を書く（統合先の名前、削除なら `null`）。利用者は次回起動時に自動移行される（v2.1.193 以降）。`renames` は履歴として残し続ける |
 
 ## 用語
 
