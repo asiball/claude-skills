@@ -1,7 +1,7 @@
 {
   "name": "worklog",
   "description": "1日の作業を振り返り、再利用候補を分類し、価値が確認できた Skill を社内へ登録する",
-  "version": "0.2.0",
+  "version": "0.1.1",
   "author": {
     "name": "asiball"
   }
