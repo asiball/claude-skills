@@ -7,7 +7,7 @@
 
 | プラグイン | スキル | 概要 |
 |---|---|---|
-| [worklog](plugins/worklog/README.md) | `/worklog:end` `/worklog:skill` `/worklog:publish` | 1日の作業を振り返り、再利用候補を分類し、価値が確認できた Skill を社内へ登録する |
+| [worklog](plugins/worklog/README.md) | `/worklog:end` `/worklog:tidy` `/worklog:publish` | 1日の作業を振り返って再利用候補を分類・Skill 化し、Skill を定期的に棚卸しし、価値が確認できた Skill を社内へ登録する |
 
 ## 導入
 
@@ -93,9 +93,10 @@ Skill はいきなり社内共有せず、次の順で範囲を広げます。
 
 ```
 候補（~/.agent-worklog/candidates/skills.md）   ← /worklog:end が記録
-  → 個人（~/.claude/skills/<name>/）             ← /worklog:skill
-  → リポジトリ（<repo>/.claude/skills/<name>/）   ← /worklog:skill
+  → 個人（~/.claude/skills/<name>/）             ← /worklog:end が再検出時に作成（置き場所は作成時に選ぶ）
+  → リポジトリ（<repo>/.claude/skills/<name>/）   ← 同上
   → 社内（このリポジトリへ PR）                    ← /worklog:publish がコミットまで行い、push と PR は人が行う
+  各段階の見直し・削除                             ← /worklog:tidy が定期的に提案
 ```
 
 社内共有する Skill には、owner・version・scope・when not to use・maintenance policy・最終確認日を README または SKILL.md に明記してください。

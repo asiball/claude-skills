@@ -1,6 +1,6 @@
 ---
 name: end
-description: 1日の Claude Code セッションを横断して振り返り、Daily Review を書き、再利用候補を docs / README / AGENTS.md / script / Skill に分類する。業務終了時に手動で実行する。
+description: 1日の Claude Code セッションを横断して振り返り、Daily Review を書き、再利用候補を docs / README / AGENTS.md / script / Skill に分類する。再検出された Skill 候補は作成まで行う。業務終了時に手動で実行する。
 argument-hint: "[YYYY-MM-DD]"
 disable-model-invocation: true
 allowed-tools:
@@ -18,7 +18,8 @@ allowed-tools:
 
 ## 原則
 
-- 目的は Skill を作ることではない。「Skill 候補: なし」は正常かつ望ましい結果として扱う
+- 目的は Skill を作ることではない。「Skill 候補: なし」「本日の新規 Skill: なし」は正常かつ望ましい結果として扱う
+- 初回検出の候補はその日に Skill 化しない。記録して再検出を待つ
 - 推測しない。サマリだけで判断せず、transcript・git・リポジトリの実ファイルを確認する
 - リポジトリには勝手に書き込まない。反映は提案として提示し、承認された場合にのみ行う
 - Pull Request は作らない。コミットと PR は人が行う
@@ -130,8 +131,22 @@ Daily Review に書いた反映候補のうち、今すぐ価値があるもの�
 
 - docs / README / CONTRIBUTING / AGENTS.md / CLAUDE.md: 既存の正本と重複させない。正本があれば参照を書く
 - script: 決定的な処理のみ。Skill にしない
-- Skill: ここでは作らない。`candidates/skills.md` に候補として残し、作成する場合は `/worklog:skill <候補名>` を案内する
+- Skill: ここでは扱わない。手順 8 で扱う
 
-### 8. 結果を報告する
+### 8. Skill を作成する
 
-最後に、書いたファイル・更新した候補・承認されて反映したもの・見送ったものを短く一覧にする。
+`candidates/skills.md` のうち、次のいずれかに該当する候補だけを作成対象として提案する。
+
+- 今日、再検出があった（初回検出ではない）
+- ユーザーが「これは今作りたい」と明示した
+
+初回検出のみの候補は提案しない。候補として残し、次回以降の再検出を待つ。該当がなければ「本日の新規 Skill: なし」と報告して次へ進む。
+
+提案した候補ごとに `${CLAUDE_PLUGIN_ROOT}/references/skill-creation.md` の手順に従う。作成判断チェックリストで落ちた候補は代替案（script / docs / AGENTS.md）を示し、状態を `rejected` にして理由を残す。
+
+transcript を読み終えたこの時点が、手順の実態を最もよく把握している。作成する場合は、ダイジェストで確認した実際の手順・判断・つまずいた点をそのまま Workflow / When not to use に反映する。候補エントリの数行から書き直すことになる後日より、ここで書くほうが精度が高い。
+
+### 9. 結果を報告する
+
+最後に、書いたファイル・更新した候補・承認されて反映したもの・作成した Skill・見送ったものを短く一覧にする。
+Skill を作成した場合は、数回使って価値を確かめてから `/worklog:publish` を検討するよう案内する。定期的な見直しは `/worklog:tidy` で行う。

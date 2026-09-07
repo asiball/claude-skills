@@ -5,6 +5,8 @@
       対象日に記録のあるセッションをリポジトリごとに一覧する
   sessions.py digest <session_id> [--max-chars N] [--per-message N]
       1 セッションを可読テキスト（ユーザー発言 / 応答 / 使用ツール / エラー）に変換する
+  sessions.py usage [--since YYYY-MM-DD] [--json]
+      Skill / スラッシュコマンドの呼び出し回数・最終使用日をまとめる（棚卸し用）
 
 外部通信はしない。git は読み取りコマンド (rev-parse) のみ使う。
 """
@@ -20,6 +22,8 @@ from pathlib import Path
 CONFIG_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
 PROJECTS_DIR = CONFIG_DIR / "projects"
 SYSTEM_REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+COMMAND_NAME = re.compile(r"<command-name>\s*/?([^<\s]+)\s*</command-name>")
+SLASH_PROMPT = re.compile(r"^/([A-Za-z0-9_:.-]+)(?:\s|$)")
 
 
 def iter_records(path):
@@ -61,6 +65,38 @@ def user_text(rec):
 
 def is_prompt(rec):
     return rec.get("type") == "user" and not rec.get("isSidechain") and bool(user_text(rec))
+
+
+def skill_invocations(rec):
+    """このレコードで呼び出された Skill / スラッシュコマンド名を返す（先頭の / は除く）。"""
+    names = []
+    if rec.get("type") == "user" and not rec.get("isSidechain"):
+        text = user_text(rec)
+        found = COMMAND_NAME.findall(text)
+        if not found:
+            m = SLASH_PROMPT.match(text)
+            if m:
+                found = [m.group(1)]
+        names.extend(found)
+    elif rec.get("type") == "assistant":
+        for b in content_blocks(rec):
+            if b.get("type") == "tool_use" and b.get("name") == "Skill":
+                inp = b.get("input") or {}
+                if isinstance(inp, dict) and inp.get("skill"):
+                    names.append(str(inp["skill"]).strip().lstrip("/"))
+    return [n for n in names if n]
+
+
+def prompt_title(text):
+    """一覧表示用の 1 行目。スラッシュコマンド起動なら /name args の形に整える。"""
+    m = COMMAND_NAME.search(text)
+    if m:
+        args = re.search(r"<command-args>(.*?)</command-args>", text, re.DOTALL)
+        title = "/" + m.group(1)
+        if args and args.group(1).strip():
+            title += " " + args.group(1).strip()
+        return title.splitlines()[0][:120]
+    return text.splitlines()[0][:120]
 
 
 # ---------- git ----------
@@ -130,7 +166,7 @@ def scan_session(path, day):
         if prompt:
             info["prompts_on_day"] += 1
             if info["first_prompt"] is None:
-                info["first_prompt"] = user_text(rec).splitlines()[0][:120]
+                info["first_prompt"] = prompt_title(user_text(rec))
     return info
 
 
@@ -267,6 +303,65 @@ def cmd_digest(args):
     print("\n".join(header) + body)
 
 
+# ---------- usage ----------
+
+def cmd_usage(args):
+    if not PROJECTS_DIR.is_dir():
+        sys.exit(f"transcript directory not found: {PROJECTS_DIR}")
+    since = date.fromisoformat(args.since) if args.since else None
+    since_start = datetime.combine(since, datetime.min.time()).timestamp() if since else 0
+    stats = {}
+    for path in PROJECTS_DIR.glob("*/*.jsonl"):
+        if path.stat().st_mtime < since_start:
+            continue
+        cwd = None
+        for rec in iter_records(path):
+            if rec.get("cwd"):
+                cwd = rec["cwd"]
+            names = skill_invocations(rec)
+            if not names:
+                continue
+            ts = parse_ts(rec.get("timestamp"))
+            if since and (not ts or ts.date() < since):
+                continue
+            for name in names:
+                st = stats.setdefault(name, {"count": 0, "first": None, "last": None, "sessions": set(), "repos": set()})
+                st["count"] += 1
+                st["sessions"].add(path.stem)
+                if cwd:
+                    st["repos"].add(repo_info(cwd)["repo_root"] or cwd)
+                if ts:
+                    st["first"] = ts if st["first"] is None or ts < st["first"] else st["first"]
+                    st["last"] = ts if st["last"] is None or ts > st["last"] else st["last"]
+
+    rows = sorted(stats.items(), key=lambda kv: (-kv[1]["count"], kv[0]))
+    if args.json:
+        out = []
+        for name, st in rows:
+            out.append({
+                "skill": name,
+                "count": st["count"],
+                "sessions": len(st["sessions"]),
+                "repos": sorted(st["repos"]),
+                "first": st["first"].isoformat() if st["first"] else None,
+                "last": st["last"].isoformat() if st["last"] else None,
+            })
+        json.dump(out, sys.stdout, ensure_ascii=False, indent=2)
+        print()
+        return
+
+    label = f"since {since.isoformat()}" if since else "all time"
+    print(f"# skill usage ({label}): {len(rows)} skills")
+    if not rows:
+        return
+    print()
+    print(f"{'skill':<40} {'count':>5} {'sessions':>8} {'repos':>5}  {'first':<10} {'last':<10}")
+    for name, st in rows:
+        first = f"{st['first']:%Y-%m-%d}" if st["first"] else "-"
+        last = f"{st['last']:%Y-%m-%d}" if st["last"] else "-"
+        print(f"{name:<40} {st['count']:>5} {len(st['sessions']):>8} {len(st['repos']):>5}  {first:<10} {last:<10}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -279,6 +374,10 @@ def main():
     p.add_argument("--max-chars", type=int, default=40000)
     p.add_argument("--per-message", type=int, default=600)
     p.set_defaults(func=cmd_digest)
+    p = sub.add_parser("usage", help="Skill / スラッシュコマンドの使用実績")
+    p.add_argument("--since", help="YYYY-MM-DD (default: all transcripts)")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_usage)
     args = ap.parse_args()
     args.func(args)
 
