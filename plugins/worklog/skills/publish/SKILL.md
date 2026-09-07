@@ -58,7 +58,7 @@ git -C <clone> branch --show-current
 
 新規プラグインの場合:
 
-1. `plugins/<plugin>/skills/<name>/` に SKILL.md と同梱物（references / templates / scripts）をコピーする
+1. `plugins/<plugin>/skills/<name>/` に SKILL.md と同梱物（references / templates / scripts）をコピーする。同梱物を複数の Skill で共有するならプラグインルート直下（`plugins/<plugin>/references/` など）に置く
 2. `plugins/<plugin>/.claude-plugin/plugin.json` を作る: `name` / `description` / `version: 0.1.0` / `author`
 3. `plugins/<plugin>/README.md` を作る: 提供するスキル、使い方、前提、読む・書く場所、owner、maintenance policy
 4. `.claude-plugin/marketplace.json` の `plugins` に `{ name, source: "./plugins/<plugin>", description, version }` を追記する
@@ -69,6 +69,8 @@ git -C <clone> branch --show-current
 1. `plugins/<plugin>/skills/<name>/` にコピーする
 2. `plugin.json` と `marketplace.json` の `version` を上げる（上げないと利用者に配信されない）
 3. プラグインの README にスキルを追記する
+
+どちらの場合も、SKILL.md 内で同梱物を指す相対パス（`references/...` `scripts/...` など）は `${CLAUDE_PLUGIN_ROOT}/...` に書き換える。個人・リポジトリの Skill では相対パスで動いていても、プラグインでは `${CLAUDE_PLUGIN_ROOT}` 基準になる。
 
 ### 6. 検証する
 

@@ -1,10 +1,11 @@
 ---
 name: end
-description: 1日の Claude Code セッションを横断して振り返り、Daily Review を書き、再利用候補を docs / README / AGENTS.md / script / Skill に分類する。再検出された Skill 候補は作成まで行う。業務終了時に手動で実行する。
-argument-hint: "[YYYY-MM-DD]"
+description: 1日の Claude Code セッションを横断して振り返り、Daily Review を書き、再利用候補を docs / README / AGENTS.md / script / Skill に分類する。再検出された Skill 候補（または引数で指定した候補）は作成まで行う。業務終了時に手動で実行する。
+argument-hint: "[YYYY-MM-DD] [候補名]"
 disable-model-invocation: true
 allowed-tools:
   - Read
+  - Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py *)
   - Bash(git log *)
   - Bash(git status *)
   - Bash(git diff *)
@@ -26,20 +27,23 @@ allowed-tools:
 - 一度きりの情報は記録しない。記録コストの方が高いものは「何もしない」を選ぶ
 - 外部通信をしない
 
-## 対象日
+## 引数
 
-`$ARGUMENTS` に `YYYY-MM-DD` があればその日、なければ今日。以下 `<date>` と書く。
+`$ARGUMENTS` を空白で区切って読む。
+
+- `YYYY-MM-DD` 形式のものがあれば対象日。なければ今日。以下 `<date>` と書く
+- それ以外のものがあれば、`candidates/skills.md` の候補名として扱う。手順 8 でその候補を作成対象に加える（初回検出でも作成判断に進める）
 
 ## 手順
 
 ### 1. セッションを列挙する
 
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py list --date <date>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py list --date <date> --exclude ${CLAUDE_SESSION_ID}
 ```
 
 - リポジトリ（worktree の場合は元リポジトリも）ごとにセッションが並ぶ
-- この Daily Review を実行している現在のセッション自身は対象から外す
+- `--exclude` でこの Daily Review を実行している現在のセッション自身を除いている。もし一覧に先頭プロンプトが `/worklog:end` のセッションが残っていれば、それも対象から外す
 - セッションが 1 つもなければ、`~/.agent-worklog/daily/<date>.md` に「セッションなし」とだけ書いて終了する
 
 ### 2. 各セッションの内容を読む
@@ -55,7 +59,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py digest <session_id>
 
 セッションが属するリポジトリごとに、必要な範囲で確認する。
 
-- `git -C <root> log --since="<date> 00:00" --until="<date> 23:59" --stat`
+- `git -C <root> log --since="<date> 00:00" --until="<翌日> 00:00" --stat`
 - `git -C <root> status --short` と `git -C <root> diff --stat`（未コミットの作業）
 - `git -C <root> worktree list`
 - `README.md` / `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md` / `docs/` / `scripts/` の有無と、今日の作業に関係する記述
@@ -119,6 +123,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py digest <session_id>
 - 概要: 何をどう行う手順・知識か
 - 候補になった理由:
 - 状態: candidate | applied | rejected
+- 作成先: （applied のとき。作成した SKILL.md のパス）
+- 作成日: （applied のとき）
 ```
 
 同じ候補が既にある場合は新規に作らず「再検出」に日付を追記し、再評価する。
@@ -138,13 +144,14 @@ Daily Review に書いた反映候補のうち、今すぐ価値があるもの�
 `candidates/skills.md` のうち、次のいずれかに該当する候補だけを作成対象として提案する。
 
 - 今日、再検出があった（初回検出ではない）
-- ユーザーが「これは今作りたい」と明示した
+- 引数で候補名が指定された、またはユーザーが対話中に「これは今作りたい」と明示した
 
 初回検出のみの候補は提案しない。候補として残し、次回以降の再検出を待つ。該当がなければ「本日の新規 Skill: なし」と報告して次へ進む。
+再検出されたが当日は見送った候補を後日作りたい場合は、`/worklog:end <候補名>` で指定する。
 
 提案した候補ごとに `${CLAUDE_PLUGIN_ROOT}/references/skill-creation.md` の手順に従う。作成判断チェックリストで落ちた候補は代替案（script / docs / AGENTS.md）を示し、状態を `rejected` にして理由を残す。
 
-transcript を読み終えたこの時点が、手順の実態を最もよく把握している。作成する場合は、ダイジェストで確認した実際の手順・判断・つまずいた点をそのまま Workflow / When not to use に反映する。候補エントリの数行から書き直すことになる後日より、ここで書くほうが精度が高い。
+transcript を読み終えたこの時点が、手順の実態を最もよく把握している。作成する場合は、ダイジェストで確認した実際の手順・判断・つまずいた点をそのまま Workflow / When not to use に反映する。後日に候補エントリの数行だけを頼りに書くより、ここで書くほうが精度が高い。
 
 ### 9. 結果を報告する
 

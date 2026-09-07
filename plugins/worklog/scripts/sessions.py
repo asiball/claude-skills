@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Claude Code の transcript (~/.claude/projects/**/*.jsonl) を決定的に処理する補助スクリプト。
 
-  sessions.py list [--date YYYY-MM-DD] [--json]
+  sessions.py list [--date YYYY-MM-DD] [--exclude SESSION_ID] [--json]
       対象日に記録のあるセッションをリポジトリごとに一覧する
   sessions.py digest <session_id> [--max-chars N] [--per-message N]
       1 セッションを可読テキスト（ユーザー発言 / 応答 / 使用ツール / エラー）に変換する
-  sessions.py usage [--since YYYY-MM-DD] [--json]
+  sessions.py usage [--since YYYY-MM-DD] [--exclude SESSION_ID] [--json]
       Skill / スラッシュコマンドの呼び出し回数・最終使用日をまとめる（棚卸し用）
 
 外部通信はしない。git は読み取りコマンド (rev-parse) のみ使う。
+前提: transcript は手元の ~/.claude/projects/ にあるものだけを読む。Claude Code の
+cleanupPeriodDays（既定 30 日）を過ぎた transcript は削除されているため、集計できる
+期間には上限がある。usage はそのデータ範囲を必ず表示する。
 """
 import argparse
 import json
@@ -22,8 +25,15 @@ from pathlib import Path
 CONFIG_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
 PROJECTS_DIR = CONFIG_DIR / "projects"
 SYSTEM_REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+LOCAL_COMMAND = re.compile(r"<local-command-(stdout|stderr|caveat)>.*?</local-command-\1>", re.DOTALL)
 COMMAND_NAME = re.compile(r"<command-name>\s*/?([^<\s]+)\s*</command-name>")
-SLASH_PROMPT = re.compile(r"^/([A-Za-z0-9_:.-]+)(?:\s|$)")
+# Claude Code 組み込みコマンド。Skill ではないので usage に数えない
+BUILTIN_COMMANDS = {
+    "help", "clear", "compact", "model", "cost", "config", "init", "login", "logout", "doctor",
+    "status", "memory", "review", "plugin", "mcp", "permissions", "resume", "exit", "quit", "vim",
+    "terminal-setup", "bug", "release-notes", "add-dir", "agents", "hooks", "ide", "export",
+    "context", "todos", "fast", "rewind", "skills", "keybindings", "statusline", "usage", "tasks",
+}
 
 
 def iter_records(path):
@@ -60,7 +70,25 @@ def content_blocks(rec):
 def user_text(rec):
     parts = [b.get("text", "") for b in content_blocks(rec) if b.get("type") == "text"]
     text = "\n".join(parts)
-    return SYSTEM_REMINDER.sub("", text).strip()
+    return LOCAL_COMMAND.sub("", SYSTEM_REMINDER.sub("", text)).strip()
+
+
+def session_title(rec):
+    """セッション題名を持つレコードなら題名を返す。"""
+    if rec.get("type") == "custom-title" and rec.get("customTitle"):
+        return str(rec["customTitle"])
+    if rec.get("type") == "summary" and rec.get("summary"):
+        return str(rec["summary"])
+    if rec.get("aiTitle"):
+        return str(rec["aiTitle"])
+    return None
+
+
+def parse_date(value):
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"日付は YYYY-MM-DD 形式で指定してください: {value!r}")
 
 
 def is_prompt(rec):
@@ -68,23 +96,25 @@ def is_prompt(rec):
 
 
 def skill_invocations(rec):
-    """このレコードで呼び出された Skill / スラッシュコマンド名を返す（先頭の / は除く）。"""
-    names = []
-    if rec.get("type") == "user" and not rec.get("isSidechain"):
-        text = user_text(rec)
-        found = COMMAND_NAME.findall(text)
-        if not found:
-            m = SLASH_PROMPT.match(text)
-            if m:
-                found = [m.group(1)]
-        names.extend(found)
+    """このレコードで呼び出された Skill / スラッシュコマンド名を (name, source) で返す。
+
+    source は "command"（ユーザーが /name で起動）か "tool"（Claude が Skill ツールで起動）。
+    <command-name> タグのないただの "/..." 発言は、タイプミスやパス言及と区別できないので数えない。
+    サイドチェーン（サブエージェント）の記録は数えない。
+    """
+    if rec.get("isSidechain"):
+        return []
+    found = []
+    if rec.get("type") == "user":
+        for name in COMMAND_NAME.findall(user_text(rec)):
+            found.append((name, "command"))
     elif rec.get("type") == "assistant":
         for b in content_blocks(rec):
             if b.get("type") == "tool_use" and b.get("name") == "Skill":
                 inp = b.get("input") or {}
                 if isinstance(inp, dict) and inp.get("skill"):
-                    names.append(str(inp["skill"]).strip().lstrip("/"))
-    return [n for n in names if n]
+                    found.append((str(inp["skill"]).strip().lstrip("/"), "tool"))
+    return [(n, src) for n, src in found if n and n not in BUILTIN_COMMANDS]
 
 
 def prompt_title(text):
@@ -116,7 +146,9 @@ def repo_info(cwd):
     if cwd in _repo_cache:
         return _repo_cache[cwd]
     info = {"repo_root": None, "main_repo": None}
-    if cwd and os.path.isdir(cwd):
+    if cwd is None:
+        info["note"] = "cwd not recorded in transcript"
+    elif os.path.isdir(cwd):
         root = git(cwd, "rev-parse", "--show-toplevel")
         if root:
             info["repo_root"] = root
@@ -151,8 +183,9 @@ def scan_session(path, day):
             info["cwd"] = rec["cwd"]
         if rec.get("gitBranch"):
             info["branch"] = rec["gitBranch"]
-        if rec.get("aiTitle"):
-            info["title"] = rec["aiTitle"]
+        title = session_title(rec)
+        if title:
+            info["title"] = title
         ts = parse_ts(rec.get("timestamp"))
         if not ts:
             continue
@@ -170,13 +203,21 @@ def scan_session(path, day):
     return info
 
 
+def transcripts(exclude=None):
+    """全 transcript のパス。exclude に指定した session_id は除く。"""
+    for path in sorted(PROJECTS_DIR.glob("*/*.jsonl")):
+        if exclude and path.stem == exclude:
+            continue
+        yield path
+
+
 def cmd_list(args):
-    day = date.fromisoformat(args.date) if args.date else date.today()
+    day = args.date or date.today()
     if not PROJECTS_DIR.is_dir():
         sys.exit(f"transcript directory not found: {PROJECTS_DIR}")
     day_start = datetime.combine(day, datetime.min.time()).timestamp()
     sessions = []
-    for path in PROJECTS_DIR.glob("*/*.jsonl"):
+    for path in transcripts(args.exclude):
         if path.stat().st_mtime < day_start:
             continue  # 対象日より前に最終更新 → 対象日の記録はない
         info = scan_session(path, day)
@@ -219,7 +260,7 @@ def cmd_list(args):
             print(f"- {span}  {s['session_id']}  branch={branch}  prompts={s['prompts_on_day']}/{s['prompts']}")
             if title:
                 print(f"    {title}")
-            if s["cwd"] != key:
+            if s["cwd"] and s["cwd"] != key:
                 print(f"    cwd: {s['cwd']}")
 
 
@@ -258,13 +299,16 @@ def cmd_digest(args):
             meta["cwd"] = rec["cwd"]
         if rec.get("gitBranch"):
             meta["branch"] = rec["gitBranch"]
-        if rec.get("aiTitle"):
-            meta["title"] = rec["aiTitle"]
+        title = session_title(rec)
+        if title:
+            meta["title"] = title
         if rec.get("isSidechain") or rec.get("type") not in ("user", "assistant"):
             continue
         ts = parse_ts(rec.get("timestamp"))
         if ts:
             meta["first"] = meta["first"] or ts
+            if meta["last"] is None or ts.date() != meta["last"].date():
+                lines.append(f"---- {ts:%Y-%m-%d} ----\n")
             meta["last"] = ts
         stamp = f"[{ts:%H:%M}]" if ts else "[--:--]"
 
@@ -305,40 +349,68 @@ def cmd_digest(args):
 
 # ---------- usage ----------
 
+def first_timestamp(path):
+    for rec in iter_records(path):
+        ts = parse_ts(rec.get("timestamp"))
+        if ts:
+            return ts
+    return None
+
+
 def cmd_usage(args):
     if not PROJECTS_DIR.is_dir():
         sys.exit(f"transcript directory not found: {PROJECTS_DIR}")
-    since = date.fromisoformat(args.since) if args.since else None
+    since = args.since
     since_start = datetime.combine(since, datetime.min.time()).timestamp() if since else 0
     stats = {}
-    for path in PROJECTS_DIR.glob("*/*.jsonl"):
+    oldest = None
+    n_transcripts = 0
+    for path in transcripts(args.exclude):
+        n_transcripts += 1
+        head = first_timestamp(path)
+        if head and (oldest is None or head < oldest):
+            oldest = head
         if path.stat().st_mtime < since_start:
             continue
         cwd = None
+        pending_command = None  # ユーザーが /name で起動した直後に Claude が同名の Skill ツールを呼んだら 1 回に畳む
         for rec in iter_records(path):
             if rec.get("cwd"):
                 cwd = rec["cwd"]
-            names = skill_invocations(rec)
-            if not names:
+            if rec.get("type") == "user" and is_prompt(rec):
+                pending_command = None
+            hits = skill_invocations(rec)
+            if not hits:
                 continue
             ts = parse_ts(rec.get("timestamp"))
-            if since and (not ts or ts.date() < since):
+            if not ts or (since and ts.date() < since):
                 continue
-            for name in names:
+            for name, source in hits:
+                if source == "tool" and name == pending_command:
+                    continue
+                if source == "command":
+                    pending_command = name
                 st = stats.setdefault(name, {"count": 0, "first": None, "last": None, "sessions": set(), "repos": set()})
                 st["count"] += 1
                 st["sessions"].add(path.stem)
                 if cwd:
                     st["repos"].add(repo_info(cwd)["repo_root"] or cwd)
-                if ts:
-                    st["first"] = ts if st["first"] is None or ts < st["first"] else st["first"]
-                    st["last"] = ts if st["last"] is None or ts > st["last"] else st["last"]
+                st["first"] = ts if st["first"] is None or ts < st["first"] else st["first"]
+                st["last"] = ts if st["last"] is None or ts > st["last"] else st["last"]
 
     rows = sorted(stats.items(), key=lambda kv: (-kv[1]["count"], kv[0]))
+    data_from = oldest.date() if oldest else None
+    covered_from = max(data_from, since) if (data_from and since) else (data_from or since)
     if args.json:
-        out = []
+        out = {
+            "transcripts": n_transcripts,
+            "data_from": data_from.isoformat() if data_from else None,
+            "since": since.isoformat() if since else None,
+            "covered_from": covered_from.isoformat() if covered_from else None,
+            "skills": [],
+        }
         for name, st in rows:
-            out.append({
+            out["skills"].append({
                 "skill": name,
                 "count": st["count"],
                 "sessions": len(st["sessions"]),
@@ -352,6 +424,10 @@ def cmd_usage(args):
 
     label = f"since {since.isoformat()}" if since else "all time"
     print(f"# skill usage ({label}): {len(rows)} skills")
+    print(f"transcripts: {n_transcripts}, oldest record: {data_from.isoformat() if data_from else '-'}")
+    if since and data_from and data_from > since:
+        print(f"WARNING: transcripts older than {data_from.isoformat()} are gone (cleanupPeriodDays). "
+              f"Actual coverage is {covered_from.isoformat()} to today; do not judge \"unused since {since.isoformat()}\" from this.")
     if not rows:
         return
     print()
@@ -366,7 +442,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("list", help="対象日のセッション一覧")
-    p.add_argument("--date", help="YYYY-MM-DD (default: today)")
+    p.add_argument("--date", type=parse_date, help="YYYY-MM-DD (default: today)")
+    p.add_argument("--exclude", metavar="SESSION_ID", help="除外するセッション（実行中の自分自身など）")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_list)
     p = sub.add_parser("digest", help="1 セッションの可読ダイジェスト")
@@ -375,7 +452,8 @@ def main():
     p.add_argument("--per-message", type=int, default=600)
     p.set_defaults(func=cmd_digest)
     p = sub.add_parser("usage", help="Skill / スラッシュコマンドの使用実績")
-    p.add_argument("--since", help="YYYY-MM-DD (default: all transcripts)")
+    p.add_argument("--since", type=parse_date, help="YYYY-MM-DD (default: all transcripts)")
+    p.add_argument("--exclude", metavar="SESSION_ID", help="除外するセッション（実行中の自分自身など）")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_usage)
     args = ap.parse_args()

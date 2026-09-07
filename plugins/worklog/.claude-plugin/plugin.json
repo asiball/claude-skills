@@ -1,7 +1,7 @@
 {
   "name": "worklog",
-  "description": "1日の作業を振り返って再利用候補を分類・Skill 化し、Skill を定期的に棚卸しし、価値が確認できた Skill を社内へ登録する",
-  "version": "0.2.0",
+  "description": "1日の作業を振り返って再利用候補を分類・Skill 化し、定期的に棚卸しし、価値が確認できたものを社内へ登録する",
+  "version": "0.2.1",
   "author": {
     "name": "asiball"
   }

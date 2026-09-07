@@ -13,18 +13,18 @@
 
 | スキル | 起動 | 頻度 | 説明 |
 |---|---|---|---|
-| `end` | `/worklog:end [YYYY-MM-DD]` | 毎日 | 業務終了時に実行。対象日（省略時は今日）のセッションを集約して Daily Review を書き、再利用候補を分類・記録する。再検出された Skill 候補は作成判断にかけ、通れば個人（`~/.claude/skills/`）またはリポジトリ（`.claude/skills/`）に雛形から SKILL.md を書く |
+| `end` | `/worklog:end [YYYY-MM-DD] [候補名]` | 毎日 | 業務終了時に実行。対象日（省略時は今日）のセッションを集約して Daily Review を書き、再利用候補を分類・記録する。再検出された Skill 候補（または候補名で指定したもの）は作成判断にかけ、通れば個人（`~/.claude/skills/`）またはリポジトリ（`.claude/skills/`）に雛形から SKILL.md を書く |
 | `tidy` | `/worklog:tidy [マーケットプレイス clone のパス]` | 週 1 か月 1 | 候補・個人やリポジトリの Skill・社内公開済み Skill を棚卸しする。使用実績と最終確認日を集計し、放置された候補の整理、未使用 Skill の削除や昇格、最終確認日の更新を提案する |
 | `publish` | `/worklog:publish <skill のディレクトリ> [マーケットプレイス clone のパス]` | 必要時 | 共有基準を確認し、マーケットプレイスの `plugins/` に複製、manifest 更新、validate、ブランチにコミットする。push と Pull Request は人が行う |
 
-Skill の作成を `end` に含めているのは、transcript を読み終えた直後が手順の実態を最もよく把握している瞬間だからです。ただし初回検出の候補はその日に作らず、再検出されたものだけを作成対象にします。
+Skill の作成を `end` に含めているのは、transcript を読み終えた直後が手順の実態を最もよく把握している瞬間だからです。ただし初回検出の候補はその日に作らず、再検出されたものを作成対象にします。今すぐ作りたい候補は `/worklog:end <候補名>` で指定します。
 
 ## Skill のライフサイクル
 
 ```
 候補（~/.agent-worklog/candidates/skills.md）   ← /worklog:end が記録
-  → 個人                                        ← /worklog:end が再検出時に作成
-  → リポジトリ                                   ← 同上（置き場所は作成時に選ぶ）
+  → 個人                                        ← /worklog:end が再検出時に作成（置き場所は作成時に選ぶ）
+  → リポジトリ                                   ← 同上
   → 社内                                        ← /worklog:publish → push と PR は人が行う
   各段階の見直し・削除                             ← /worklog:tidy が定期的に提案
 ```
@@ -45,7 +45,9 @@ Skill の作成を `end` に含めているのは、transcript を読み終え�
 ## 読む情報
 
 - Claude Code の transcript（`~/.claude/projects/<cwd スラッグ>/<session_id>.jsonl`）
-  - `cwd` / `gitBranch` / `timestamp` / セッション題名は transcript に含まれているため、別途 hook で記録しません
+  - `cwd` / `gitBranch` / `timestamp` / セッション題名（`custom-title` レコード）は transcript に含まれているため、別途 hook で記録しません
+  - transcript は Claude Code の `cleanupPeriodDays`（既定 30 日）で削除されるため、`tidy` の使用実績はその範囲内に限られます。スクリプトは実データの範囲を表示します
+  - 対象日の絞り込みにファイルの更新日時を使うため、transcript をコピー・復元して更新日時が変わった場合は一覧から漏れることがあります
 - 各リポジトリの `git log` / `git status` / `git diff` / `git worktree list`
 - 各リポジトリの `README.md` / `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md` / `docs/` / `scripts/`
 
@@ -57,7 +59,7 @@ Skill の作成を `end` に含めているのは、transcript を読み終え�
 | `tidy` | `~/.agent-worklog/tidy/YYYY-MM-DD.md`（提案と決定の記録）、`candidates/*.md` の状態欄。Skill の削除・更新は承認された場合にのみ行い、リポジトリや clone のコミットは人が行う |
 | `publish` | マーケットプレイス clone 内の新しいブランチ。push はしない |
 
-`~/.agent-worklog/` は隠しディレクトリです。Daily Review は 1 日 1 ファイル数 KB 程度で、`end` は当日分しか読みません。`tidy` が件数とサイズを報告します。
+`~/.agent-worklog/` は隠しディレクトリです。Daily Review は 1 日 1 ファイル数 KB 程度で、`end` が読み返すのは当日分と `candidates/*.md` だけです。`tidy` が件数とサイズを報告します。
 
 リポジトリへの自動書き込み、Pull Request の作成、外部通信はしません（GitBucket 環境では `gh` / `glab` 相当のツールがないため、コミットと PR は人が行います）。
 
@@ -66,14 +68,15 @@ Skill の作成を `end` に含めているのは、transcript を読み終え�
 `scripts/sessions.py` は transcript を決定的に処理するための補助スクリプトです。`end` と `tidy` から呼ばれますが、単体でも使えます。
 
 ```
-python3 scripts/sessions.py list [--date YYYY-MM-DD] [--json]
+python3 scripts/sessions.py list [--date YYYY-MM-DD] [--exclude SESSION_ID] [--json]
 python3 scripts/sessions.py digest <session_id> [--max-chars N] [--per-message N]
-python3 scripts/sessions.py usage [--since YYYY-MM-DD] [--json]
+python3 scripts/sessions.py usage [--since YYYY-MM-DD] [--exclude SESSION_ID] [--json]
 ```
 
 - `list`: 対象日に記録のあるセッションを、リポジトリ（worktree なら元リポジトリも）ごとに一覧する
 - `digest`: 1 セッションを「ユーザー発言 / Claude の応答 / 使用ツール / エラー」の可読テキストに変換する
-- `usage`: Skill / スラッシュコマンドごとの呼び出し回数・使用セッション数・使用リポジトリ数・初回と最終の使用日を集計する（`tidy` が使う）
+- `usage`: Skill ごとの呼び出し回数・使用セッション数・使用リポジトリ数・初回と最終の使用日を集計する（`tidy` が使う）。`<command-name>` タグ付きの起動と `Skill` ツール呼び出しだけを数え、組み込みコマンドとサブエージェント内の呼び出しは除く。実データの開始日を表示し、`--since` がそれより前なら警告する
+- `--exclude`: 実行中のセッション自身（`${CLAUDE_SESSION_ID}`）を集計から外す
 
 ## References
 

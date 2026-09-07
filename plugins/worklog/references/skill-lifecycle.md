@@ -13,9 +13,9 @@ candidate（~/.agent-worklog/candidates/skills.md）
 
 | 段階 | 誰が動かすか |
 |---|---|
-| candidate → 個人 / リポジトリ | `/worklog:end`。再検出された候補のみ。手順は `skill-creation.md` |
+| candidate → 個人 / リポジトリ | `/worklog:end`。再検出された候補、または `/worklog:end <候補名>` で明示した候補。手順は `skill-creation.md` |
 | 個人 / リポジトリ → 社内 | `/worklog:publish`。push と Pull Request は人が行う |
-| 見直し・削除・降格 | `/worklog:tidy`。提案のみ。削除は承認制 |
+| 見直し・削除・移動 | `/worklog:tidy`。提案のみ。削除は承認制 |
 
 ## Skill 作成判断
 

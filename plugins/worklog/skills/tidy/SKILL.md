@@ -5,6 +5,7 @@ argument-hint: "[マーケットプレイス clone のパス]"
 disable-model-invocation: true
 allowed-tools:
   - Read
+  - Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py *)
   - Bash(ls *)
   - Bash(du *)
   - Bash(git status *)
@@ -30,20 +31,26 @@ Skill とその候補にも保守コストがある。増えたものを定期�
 | 対象 | 条件 | 提案 |
 |---|---|---|
 | 候補（`candidate`） | 初回検出から 60 日以上経過し、再検出がない | `rejected`（理由: 再発なし） |
-| 個人・リポジトリの Skill | 90 日以上未使用 | 削除。迷う場合は次回まで保留 |
-| 個人の Skill | 直近 90 日で 5 回以上、かつ複数リポジトリで使用 | リポジトリまたは社内への昇格を検討 |
+| 個人の Skill | 作成日（または最終確認日）から 90 日以上経過し、その間の使用が 0 回 | 削除。迷う場合は次回まで保留 |
+| リポジトリの Skill | 同上 | 削除の**検討**を提案。自分の実績だけでは他の作業者の使用が見えないため、削除の判断は人が行う |
+| 個人の Skill | 直近 90 日で 5 回以上、かつ 1 つのリポジトリでのみ使用 | そのリポジトリの `.claude/skills/` への移動を検討 |
+| 個人の Skill | 直近 90 日で 5 回以上、かつ複数リポジトリで使用 | 社内共有（`/worklog:publish`）を検討 |
 | 社内公開済み Skill | 最終確認日から 180 日以上 | owner に見直しを依頼 |
+
+使用実績は手元の transcript からしか取れない。transcript は Claude Code の `cleanupPeriodDays`（既定 30 日）で削除されるため、**集計の実データ範囲がしきい値より短い場合、「未使用」を理由にした削除提案はしない**。その場合は範囲を報告し、しきい値を範囲内に縮めるか、次回まで保留にする。
 
 ## 手順
 
 ### 1. 使用実績を集計する
 
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py usage --since <90 日前の YYYY-MM-DD>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py usage --since <90 日前の YYYY-MM-DD> --exclude ${CLAUDE_SESSION_ID}
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sessions.py usage --since <90 日前の YYYY-MM-DD> --exclude ${CLAUDE_SESSION_ID} --json
 ```
 
 Skill ごとの呼び出し回数・使用セッション数・使用リポジトリ数・初回と最終の使用日が出る。
-この棚卸しを実行している現在のセッション自身の `worklog:tidy` は除いて考える。
+先頭の `oldest record` が実データの開始日。`WARNING` が出ていれば、その範囲より前の使用は見えていない。
+`--json` の `repos` に出たリポジトリが、手順 3 で `.claude/skills/` を見に行く対象になる。
 
 ### 2. 候補を点検する
 
@@ -59,13 +66,13 @@ Skill ごとの呼び出し回数・使用セッション数・使用リポジ�
 
 ```
 ls ~/.claude/skills/
-ls <現在のリポジトリ>/.claude/skills/
+ls <リポジトリ>/.claude/skills/      # 現在のリポジトリと、手順 1 の repos に出た各リポジトリ
 ```
 
-各 SKILL.md を読み、手順 1 の使用実績と照合する。
+各 SKILL.md を読み、手順 1 の使用実績と照合する。作成日は SKILL.md の `version` / 最終確認日、または `candidates/skills.md` の「作成日」から取る。
 
-- 90 日以上未使用 → 削除を提案。判断がつかなければ「次回まで保留」として記録する
-- 個人の Skill で使用が多く、複数リポジトリにわたる → リポジトリへの移動、または `/worklog:publish` を案内
+- 作成から 90 日以上経過し、実データ範囲内で未使用 → 個人なら削除を提案。リポジトリなら削除の検討を提案（判断は人）。判断がつかなければ「次回まで保留」として記録する
+- 個人の Skill で使用が多い → 1 リポジトリのみなら移動、複数リポジトリなら `/worklog:publish` を案内
 - 参照しているファイル・コマンド・手順が現状と合っていない → 更新を提案
 - owner / version / 最終確認日 / maintenance policy がない → 追記を提案
 - 内容と動作に問題がないと確認できたもの → 最終確認日を今日に更新する提案
@@ -85,7 +92,7 @@ ls <現在のリポジトリ>/.claude/skills/
 
 ```
 du -sh ~/.agent-worklog/daily ~/.agent-worklog/candidates
-ls ~/.agent-worklog/daily | wc -l
+ls ~/.agent-worklog/daily
 ```
 
 件数とサイズを報告する。Daily Review は履歴なので既定では削除しない。ユーザーが望めば、1 年以上前の分の削除を提案してよい。
@@ -101,6 +108,7 @@ ls ~/.agent-worklog/daily | wc -l
 
 - 候補: 状態と理由を追記する
 - 個人 Skill: 削除、内容の更新、または最終確認日の更新
+- 個人 → リポジトリへの移動: `~/.claude/skills/<name>/` を `<repo>/.claude/skills/<name>/` にコピーし、動作を確認してから元を削除する。`candidates/skills.md` の「作成先」を更新する。コミットは人が行う
 - リポジトリ Skill: 作業ツリーを編集する。コミットは人が行う
 - 社内 Skill: clone の作業ツリーを編集し、`version` を上げる。push と Pull Request は人が行う。owner が別の人なら依頼文を用意する
 

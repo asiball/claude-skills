@@ -4,6 +4,9 @@ description: <何をするか。いつ使うかを先頭に書く。Claude は�
 argument-hint: "[<引数の例>]"
 # 手動でしか起動させない場合は true
 disable-model-invocation: false
+# 事前に許可する読み取り系ツール。書き込み系は入れない。不要なら削除する
+allowed-tools:
+  - Read
 ---
 
 # <Skill 名>

@@ -4,7 +4,7 @@
 
 ## 1. 作成判断をする
 
-`skill-lifecycle.md` の「Skill 作成判断」7 項目を 1 つずつ確認し、結果を表で示す。
+プラグインルート直下の `references/skill-lifecycle.md` の「Skill 作成判断」7 項目を 1 つずつ確認し、結果を表で示す。
 
 既存 Skill の確認は実際に見る:
 
@@ -35,7 +35,7 @@ script / docs / AGENTS.md で足りると判断したら、その代替案を示
 
 ## 4. 雛形から書く
 
-`templates/SKILL-template.md` を元に、全セクションを埋める。該当しないセクションは削除せず「該当なし」と書く。
+プラグインルート直下の `templates/SKILL-template.md` を元に、全セクションを埋める。該当しないセクションは削除せず「該当なし」と書く。
 
 - 候補エントリの「概要」「候補になった理由」を Purpose と When to use に反映する
 - 当日のダイジェストで確認した実際の手順・判断・つまずいた点を Workflow と When not to use に反映する
